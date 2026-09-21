@@ -1,0 +1,149 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Un seul déploiement à la fois : la branche en cours annule le run précédent.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  qualite:
+    name: Qualité (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Analyse statique
+        run: npm run lint
+
+      - name: Vérification des types
+        run: npm run typecheck
+
+      - name: Tests unitaires et couverture
+        run: npm run test:coverage
+
+      - name: Audit des dépendances
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Build de production
+        run: npm run build
+
+      - name: Préparation du paquet de déploiement
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release/.next
+          cp -r .next/standalone/. release/
+          cp -r .next/static release/.next/static
+          if [ -d public ]; then cp -r public release/public; fi
+          cp deploy/ecosystem.config.cjs release/
+          du -sh release
+
+      - name: Publication de l'artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-release
+          path: release
+          retention-days: 5
+          include-hidden-files: true
+
+      - name: Publication du rapport de couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: couverture
+          path: coverage
+          retention-days: 5
+
+  deploiement:
+    name: Déploiement sur le VPS
+    needs: qualite
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://${{ vars.VPS_HOST || '141.94.246.117' }}:${{ vars.APP_PORT || '3000' }}
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST || '141.94.246.117' }}
+      VPS_PORT: ${{ vars.VPS_PORT || '48956' }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PATH: ${{ vars.VPS_PATH || '/var/www/portfolio' }}
+      APP_PORT: ${{ vars.APP_PORT || '3000' }}
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Téléchargement de l'artefact validé
+        uses: actions/download-artifact@v4
+        with:
+          name: portfolio-release
+          path: release
+
+      - name: Configuration de la clé SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Synchronisation du build
+        run: |
+          set -euo pipefail
+          chmod +x release/server.js || true
+          rsync -az --delete --exclude '.env' \
+            -e "ssh -i ~/.ssh/deploy_key -p $VPS_PORT" \
+            release/ "$VPS_USER@$VPS_HOST:$VPS_PATH/"
+
+      - name: Redémarrage applicatif et sonde de santé
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "APP_PORT=$APP_PORT APP_PATH=$VPS_PATH bash -s" <<'REMOTE'
+          set -euo pipefail
+          export PATH="$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)/bin:$PATH"
+          cd "$APP_PATH"
+
+          pm2 startOrReload ecosystem.config.cjs --update-env
+          pm2 save
+
+          # Sonde : 10 tentatives espacées d'une seconde avant de déclarer l'échec.
+          for attempt in $(seq 1 10); do
+            if curl -fsS "http://127.0.0.1:$APP_PORT/api/health" > /dev/null; then
+              echo "Application en ligne après $attempt tentative(s)."
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "La sonde de santé a échoué, consultation des journaux :"
+          pm2 logs portfolio --lines 40 --nostream || true
+          exit 1
+          REMOTE
+
+      - name: Nettoyage des secrets du runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
