@@ -29,7 +29,7 @@ déploiement continu sur VPS (GitHub Actions, rsync, PM2).
 ```bash
 npm ci
 cp .env.example .env.local
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost:3000 (en local uniquement)
 ```
 
 Node 22 ou supérieur.
@@ -171,7 +171,7 @@ honeypot), validation Zod, quotas, CSP, en-têtes, routes API.
 
 ## Déploiement
 
-Cible : `141.94.246.117`, SSH sur le port **48956**, application sur le port **3000**.
+Cible : `141.94.246.117`, SSH sur le port **48956**, application sur le port **4300**.
 
 Détail complet (clés SSH, secrets GitHub, préparation du serveur, rollback,
 HTTPS) : [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md).
@@ -183,4 +183,3 @@ Chaque push sur `main` :
 3. rsync de l'artefact sur le VPS ;
 4. rechargement PM2 puis vérification de `/api/health` avant de déclarer le
    déploiement réussi.
-# Portefolio3D

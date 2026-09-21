@@ -7,9 +7,9 @@
 #
 set -euo pipefail
 
-APP_NAME="portfolio"
-APP_PATH="${APP_PATH:-/var/www/portfolio}"
-APP_PORT="${APP_PORT:-3000}"
+APP_NAME="portfolio-3d"
+APP_PATH="${APP_PATH:-/var/www/portfolio-3d}"
+APP_PORT="${APP_PORT:-4300}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 
 echo "==> Vérification de Node.js"
@@ -31,6 +31,15 @@ sudo chown -R "$USER":"$USER" "$APP_PATH"
 
 echo "==> Démarrage automatique de PM2 au boot"
 pm2 startup systemd -u "$USER" --hp "$HOME" | tail -1 | grep -E '^sudo' | bash || true
+
+echo "==> Ports déjà occupés sur la machine"
+ss -tulpn 2>/dev/null | awk '/LISTEN/ {print $5}' | sed 's/.*://' | sort -un | tr '\n' ' '
+echo
+
+if ss -tulpn 2>/dev/null | grep -q ":$APP_PORT "; then
+  echo "    ATTENTION : le port $APP_PORT est déjà utilisé. Relance avec APP_PORT=<autre port>."
+  exit 1
+fi
 
 echo "==> Ouverture du port applicatif $APP_PORT"
 if command -v ufw > /dev/null; then

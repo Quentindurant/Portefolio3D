@@ -34,7 +34,7 @@ const body = localFont({
   fallback: ['system-ui', 'sans-serif'],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://141.94.246.117:3000';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://141.94.246.117:4300';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

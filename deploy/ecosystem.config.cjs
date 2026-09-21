@@ -6,7 +6,7 @@
 module.exports = {
   apps: [
     {
-      name: 'portfolio',
+      name: 'portfolio-3d',
       script: 'server.js',
       // Le dossier du fichier de configuration est aussi la racine déployée.
       cwd: __dirname,
@@ -18,9 +18,9 @@ module.exports = {
       listen_timeout: 8000,
       env: {
         NODE_ENV: 'production',
-        PORT: process.env.APP_PORT || 3000,
+        PORT: process.env.APP_PORT || 4300,
         HOSTNAME: '0.0.0.0',
-        NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'http://141.94.246.117:3000',
+        NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'http://141.94.246.117:4300',
         CONTACT_INBOX: process.env.CONTACT_INBOX || 'quentin.durant49@orange.fr',
         ENABLE_HSTS: process.env.ENABLE_HSTS || 'false',
       },

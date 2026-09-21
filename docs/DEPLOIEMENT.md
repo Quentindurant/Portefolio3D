@@ -2,7 +2,7 @@
 
 Cible : `141.94.246.117`
 SSH : port **48956**
-Application : port **3000** (`http://141.94.246.117:3000`)
+Application : port **4300** (`http://141.94.246.117:4300`)
 
 La chaîne est décrite dans `.github/workflows/ci-cd.yml` : un job **qualité** qui valide et
 construit, puis un job **déploiement** qui envoie le build et recharge PM2.
@@ -40,8 +40,9 @@ Une seule fois :
 ssh -p 48956 deploy@141.94.246.117 'bash -s' < deploy/setup-vps.sh
 ```
 
-Le script installe Node 22 (via nvm si besoin), PM2, crée `/var/www/portfolio`, active le
-démarrage automatique de PM2 et ouvre le port 3000 sur `ufw` s'il est présent.
+Le script installe Node 22 (via nvm si besoin), PM2, crée `/var/www/portfolio-3d`, active le
+démarrage automatique de PM2, liste les ports déjà occupés et ouvre le port 4300 sur `ufw`.
+S'il est déjà pris, le script s'arrête : relance-le avec `APP_PORT=<autre port>`.
 
 ## 3. Renseigner les secrets GitHub
 
@@ -60,8 +61,8 @@ démarrage automatique de PM2 et ouvre le port 3000 sur `ufw` s'il est présent.
 | --- | --- | --- |
 | `VPS_HOST` | `141.94.246.117` | Adresse du serveur |
 | `VPS_PORT` | `48956` | Port SSH |
-| `VPS_PATH` | `/var/www/portfolio` | Dossier applicatif |
-| `APP_PORT` | `3000` | Port d'écoute de Next |
+| `VPS_PATH` | `/var/www/portfolio-3d` | Dossier applicatif |
+| `APP_PORT` | `4300` | Port d'écoute de Next |
 
 ## 4. Premier déploiement
 
@@ -72,18 +73,18 @@ git push origin main
 Le job **qualité** doit passer au vert avant que le job **déploiement** démarre. Ce dernier :
 
 1. télécharge l'artefact validé (aucune reconstruction, donc ce qui est testé est ce qui part) ;
-2. synchronise `/var/www/portfolio` avec `rsync --delete` (le fichier `.env` du serveur est préservé) ;
+2. synchronise `/var/www/portfolio-3d` avec `rsync --delete` (le fichier `.env` du serveur est préservé) ;
 3. exécute `pm2 startOrReload ecosystem.config.cjs --update-env` puis `pm2 save` ;
-4. interroge `http://127.0.0.1:3000/api/health` jusqu'à dix fois ; en cas d'échec, les journaux
+4. interroge `http://127.0.0.1:4300/api/health` jusqu'à dix fois ; en cas d'échec, les journaux
    PM2 sont affichés dans le run GitHub et le déploiement est marqué en erreur.
 
 ## 5. Exploitation courante
 
 ```bash
 pm2 status                 # état du processus
-pm2 logs portfolio         # journaux en direct
-pm2 restart portfolio      # redémarrage manuel
-curl -s localhost:3000/api/health
+pm2 logs portfolio-3d         # journaux en direct
+pm2 restart portfolio-3d      # redémarrage manuel
+curl -s localhost:4300/api/health
 ```
 
 ### Revenir en arrière
@@ -98,7 +99,7 @@ git revert <sha_fautif> && git push
 
 ## 6. Passer en HTTPS (optionnel)
 
-Le port 3000 convient pour une démonstration. Pour un nom de domaine en HTTPS, place Nginx
+Le port 4300 convient pour une démonstration. Pour un nom de domaine en HTTPS, place Nginx
 devant l'application :
 
 ```nginx
@@ -107,7 +108,7 @@ server {
     server_name exemple.fr;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:4300;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -132,6 +133,6 @@ de débit du formulaire de contact.
 | --- | --- |
 | `Permission denied (publickey)` | La clé privée dans `VPS_SSH_KEY` est incomplète, ou la clé publique n'est pas dans `~/.ssh/authorized_keys` du bon utilisateur |
 | `pm2: command not found` | PM2 installé sous un autre utilisateur, ou nvm non chargé : relance `deploy/setup-vps.sh` |
-| La sonde de santé échoue | `pm2 logs portfolio --lines 100` ; vérifier que le port 3000 est libre |
-| Le site répond en local mais pas depuis l'extérieur | Ouvrir le port : `sudo ufw allow 3000/tcp` et vérifier le pare-feu de l'hébergeur |
+| La sonde de santé échoue | `pm2 logs portfolio-3d --lines 100` ; vérifier que le port 4300 est libre |
+| Le site répond en local mais pas depuis l'extérieur | Ouvrir le port : `sudo ufw allow 4300/tcp` et vérifier le pare-feu de l'hébergeur |
 | `rsync: command not found` côté serveur | `sudo apt install rsync` |
